@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+<meta charset='utf-8' />
+<title>Virtual space in Komodo Edit</title>
+</head>
+<body>
+<h1>Enabling virtual space in <a href='http://komodoide.com/komodo-edit/'>Komodo Edit 9</a></h1>
+<p>Create <strong>virtual space</strong> macro:</p>
+<pre>
+var scimoz=komodo.view.scimoz;
+scimoz.virtualSpaceOptions=scimoz.SCVS_RECTANGULARSELECTION|scimoz.SCVS_USERACCESSIBLE;
+</pre>
+<p>Set this property for <strong>virtual space</strong> macro: <em>Properties / Triggers / Macro should trigger on a Komodo event / After file open</em>.</p>
+<p>Create <strong>caret left</strong> macro:</p>
+<pre>
+komodo.view.scimoz.charLeft();
+</pre>
+<p>Bind <kbd>Left</kbd> key to <strong>caret left</strong> macro: go to <em>Properties / Key Binding / New Key Sequence</em> and press <kbd>Left</kbd>.</p>
+<p>Create <strong>caret right</strong> macro:</p>
+<pre>
+komodo.view.scimoz.charRight();
+</pre>
+<p>Bind <kbd>Right</kbd> key to <strong>caret right</strong> macro: go to <em>Properties / Key Binding / New Key Sequence</em> and press <kbd>Right</kbd>.</p>
+<p>If you want to use <em>Fix whitespace on save</em> option (in <em>Edit / Preferences /</em> check <em>Show Advanced / File Saving</em>), you need to check <em>Always clean current line</em>, otherwise whitespace won't be cleaned when in virtual space and an error message will be displayed.</p>
+<h2>See also</h2>
+<ul>
+<li><a href='http://docs.activestate.com/komodo/latest/macroapi.html'>Macro API</a> — we're using some undocumented features from it</li>
+</ul>
+</body>
+</html>
