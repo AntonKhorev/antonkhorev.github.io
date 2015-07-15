@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+<meta charset='utf-8' />
+<title>Coursera WebGL Assignment 1 - Tessellation and Twist</title>
+</head>
+<body>
+<canvas id='twistCanvas' width='512' height='512'></canvas>
+<div>
+<label for='twistDepthInput'>Tessellation depth:</label>
+0 <input type='range' id='twistDepthInput' min='0' max='8' value='4' /> 8
+</div>
+<div>
+<label for='twistAngleInput'>Twist angle:</label>
+−360° <input type='range' id='twistAngleInput' min='-360' max='360' step='any' value='90' /> 360°
+</div>
+<div>
+<input type='checkbox' id='twistWireframeInput' />
+<label for='twistWireframeInput'>Wireframe</label>
+</div>
+<div>
+<input type='checkbox' id='twistGasketInput' />
+<label for='twistGasketInput'>Gasket</label>
+</div>
+<script id='twistVertexShader' type='x-shader/x-vertex'>
+	attribute vec4 vPosition;
+	void main() {
+		gl_Position=vPosition;
+	}
+</script>
+<script id='twistFragmentShader' type='x-shader/x-fragment'>
+	precision mediump float;
+	void main() {
+		gl_FragColor=vec4(1.0,0.0,0.0,1.0);
+	}
+</script>
+<script>
+	function makeProgram(vertexShaderSrc,fragmentShaderSrc) {
+		var vertexShader=gl.createShader(gl.VERTEX_SHADER);
+		gl.shaderSource(vertexShader,vertexShaderSrc);
+		gl.compileShader(vertexShader);
+		var fragmentShader=gl.createShader(gl.FRAGMENT_SHADER);
+		gl.shaderSource(fragmentShader,fragmentShaderSrc);
+		gl.compileShader(fragmentShader);
+		var program=gl.createProgram();
+		gl.attachShader(program,vertexShader);
+		gl.attachShader(program,fragmentShader);
+		gl.linkProgram(program);
+		return program;
+	}
+	var canvas=document.getElementById('twistCanvas');
+	var gl=canvas.getContext('webgl')||canvas.getContext('experimental-webgl');
+	gl.clearColor(0.9,1.0,0.8,1.0);
+	var program=makeProgram(
+		document.getElementById('twistVertexShader').text,
+		document.getElementById('twistFragmentShader').text
+	);
+	gl.useProgram(program);
+
+	var depth=parseInt(document.getElementById('twistDepthInput').value);
+	var angle=parseFloat(document.getElementById('twistAngleInput').value)*Math.PI/180;
+	var wireframe=document.getElementById('twistWireframeInput').checked;
+	var gasket=document.getElementById('twistGasketInput').checked;
+
+	function draw() {
+		var nVertices=Math.pow(gasket?3:4,depth)*(wireframe?6:3); // (triangles) * (vertices for one triangle)
+		var verticesSize=nVertices*2; // (vertices) * (coordinates of vertex)
+		var vertices=new Float32Array(verticesSize);
+		var iv=0;
+
+		function pushVertex(v) {
+			var x=v[0];
+			var y=v[1];
+			var d=Math.sqrt(x*x+y*y);
+			var a=d*angle;
+			var x1=x*Math.cos(a)-y*Math.sin(a);
+			var y1=x*Math.sin(a)+y*Math.cos(a);
+			vertices[iv++]=x1; vertices[iv++]=y1;
+		}
+		function mix(a,b,m) {
+			return [
+				a[0]*(1-m)+b[0]*m,
+				a[1]*(1-m)+b[1]*m
+			];
+		}
+		function triangle(depth,a,b,c) {
+			if (depth<=0) {
+				if (wireframe) {
+					pushVertex(a); pushVertex(b);
+					pushVertex(b); pushVertex(c);
+					pushVertex(c); pushVertex(a);
+				} else {
+					pushVertex(a);
+					pushVertex(b);
+					pushVertex(c);
+				}
+			} else {
+				var m=0.5;
+				var ab=mix(a,b,m);
+				var bc=mix(b,c,m);
+				var ca=mix(c,a,m);
+				triangle(depth-1,a,ab,ca);
+				triangle(depth-1,b,bc,ab);
+				triangle(depth-1,c,ca,bc);
+				if (!gasket) triangle(depth-1,ab,bc,ca);
+			}
+		}
+		triangle(
+			depth,
+			[0,1],
+			[-Math.sin(2/3*Math.PI),Math.cos(2/3*Math.PI)],
+			[-Math.sin(4/3*Math.PI),Math.cos(4/3*Math.PI)]
+		);
+
+		var buffer=gl.createBuffer();
+		gl.bindBuffer(gl.ARRAY_BUFFER,buffer);
+		gl.bufferData(gl.ARRAY_BUFFER,vertices,gl.STATIC_DRAW);
+
+		var vPosition=gl.getAttribLocation(program,'vPosition');
+		gl.vertexAttribPointer(vPosition,2,gl.FLOAT,false,0,0);
+		gl.enableVertexAttribArray(vPosition);
+
+		gl.clear(gl.COLOR_BUFFER_BIT);
+		gl.drawArrays(wireframe?gl.LINES:gl.TRIANGLES,0,nVertices);
+
+		gl.deleteBuffer(buffer);
+	};
+	draw();
+
+	function bindRangeEventHandler(range,handler) {
+		// need to do this because http://stackoverflow.com/questions/28118849/range-slider-input-event-not-firing-in-ie-10
+		range.addEventListener('input',handler);
+		range.addEventListener('change',handler);
+	}
+	bindRangeEventHandler(document.getElementById('twistDepthInput'),function(){
+		var newDepth=parseInt(this.value);
+		if (depth!=newDepth) {
+			depth=newDepth;
+			draw();
+		}
+	});
+	bindRangeEventHandler(document.getElementById('twistAngleInput'),function(){
+		var newAngle=parseFloat(this.value)*Math.PI/180;
+		if (angle!=newAngle) {
+			angle=newAngle;
+			draw();
+		}
+	});
+	document.getElementById('twistWireframeInput').addEventListener('change',function(){
+		wireframe=this.checked;
+		draw();
+	});
+	document.getElementById('twistGasketInput').addEventListener('change',function(){
+		gasket=this.checked;
+		draw();
+	});
+</script>
+</body>
+</html>
