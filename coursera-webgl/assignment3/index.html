@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+<meta charset='utf-8' />
+<title>Coursera WebGL Assignment 3 - Geometric CAD</title>
+<style>
+canvas {
+	border: solid 1px #000;
+}
+input {
+	width: 4em;
+}
+.shape {
+	border: solid 1px #000;
+	padding: 2px;
+	margin: 2px 0;
+}
+.shape:hover {
+	border-color: #F00;
+}
+.transform label:not(:first-child) .transform-name {
+	display: none;
+}
+</style>
+<script id='coursera-geometric-cad-vertex-shader' type='x-shader/x-vertex'>
+	attribute vec4 position;
+	uniform vec3 scaling;
+	uniform vec3 rotation;
+	uniform vec3 translation;
+	void main() {
+		vec3 m=scaling;
+		vec3 s=sin(radians(rotation));
+		vec3 c=cos(radians(rotation));
+		vec3 t=translation;
+
+		gl_Position=mat4( // translate
+			1.0, 0.0, 0.0, 0.0,
+			0.0, 1.0, 0.0, 0.0,
+			0.0, 0.0, 1.0, 0.0,
+			t.x, t.y, t.z, 1.0
+		)*mat4( // rotate z
+			c.z,-s.z, 0.0, 0.0,
+			s.z, c.z, 0.0, 0.0,
+			0.0, 0.0, 1.0, 0.0,
+			0.0, 0.0, 0.0, 1.0
+		)*mat4( // rotate y
+			c.y, 0.0,-s.y, 0.0,
+			0.0, 1.0, 0.0, 0.0,
+			s.y, 0.0, c.y, 0.0,
+			0.0, 0.0, 0.0, 1.0
+		)*mat4( // rotate x
+			1.0, 0.0, 0.0, 0.0,
+			0.0, c.x, s.x, 0.0,
+			0.0,-s.x, c.x, 0.0,
+			0.0, 0.0, 0.0, 1.0
+		)*mat4( // scale
+			m.x, 0.0, 0.0, 0.0,
+			0.0, m.y, 0.0, 0.0,
+			0.0, 0.0, m.z, 0.0,
+			0.0, 0.0, 0.0, 1.0
+		)*position;
+	}
+</script>
+<script id='coursera-geometric-cad-fragment-shader' type='x-shader/x-fragment'>
+	precision mediump float;
+	uniform vec4 color;
+	void main() {
+		gl_FragColor=color;
+	}
+</script>
+<script src='http://code.jquery.com/jquery-2.1.4.min.js'></script>
+<script>
+"use strict";
+$(function(){
+	var container=$('#coursera-geometric-cad');
+	var canvas=$("<canvas width='512' height='512'></canvas>");
+	container.empty().append(canvas);
+	var gl=canvas[0].getContext('webgl')||canvas[0].getContext('experimental-webgl');
+
+	function makeProgram(vertexShaderSrc,fragmentShaderSrc) {
+		var vertexShader=gl.createShader(gl.VERTEX_SHADER);
+		gl.shaderSource(vertexShader,vertexShaderSrc);
+		gl.compileShader(vertexShader);
+		if (!gl.getShaderParameter(vertexShader,gl.COMPILE_STATUS)) console.log(gl.getShaderInfoLog(vertexShader));
+		var fragmentShader=gl.createShader(gl.FRAGMENT_SHADER);
+		gl.shaderSource(fragmentShader,fragmentShaderSrc);
+		gl.compileShader(fragmentShader);
+		if (!gl.getShaderParameter(fragmentShader,gl.COMPILE_STATUS)) console.log(gl.getShaderInfoLog(fragmentShader));
+		var program=gl.createProgram();
+		gl.attachShader(program,vertexShader);
+		gl.attachShader(program,fragmentShader);
+		gl.linkProgram(program);
+		return program;
+	}
+
+	function allocateData(arrayType,valuesPerEntry,processEntries,processEntriesSection) {
+		var offset=0;
+		var sections=[];
+		var sectionStack=[];
+		var state={
+			enter: function(name){
+				var section={
+					name: name,
+					startOffset: offset,
+				};
+				sectionStack.push(section);
+				return state;
+			},
+			exit: function(){
+				var section=sectionStack.pop();
+				section.endOffset=offset;
+				sections.push(section);
+				return state;
+			},
+			add: function(name,length){
+				state.enter(name);
+				offset+=length||1;
+				return state.exit();
+			},
+			done: function(){
+				// TODO assert empty stack
+				var entries={};
+				sections.forEach(function(section){
+					entries[section.name]={
+						length: section.endOffset-section.startOffset,
+						offset: section.startOffset,
+						get data(){
+							return entries.data.subarray(this.offset*valuesPerEntry);
+						},
+						idata: function(i){
+							return entries.data.subarray((this.offset+i)*valuesPerEntry);
+						},
+					};
+					processEntriesSection(entries[section.name]);
+				});
+				entries.data=new arrayType(offset*valuesPerEntry);
+				processEntries(entries);
+				return entries;
+			},
+		};
+		return state;
+	}
+	function allocateVertices(arrayType,valuesPerVertex) {
+		return allocateData(arrayType,valuesPerVertex,function(vertices){
+			vertices.bufferData=function(){
+				gl.bufferData(gl.ARRAY_BUFFER,vertices.data,gl.STATIC_DRAW);
+			};
+		},function(section){
+			// TODO draw
+		});
+	}
+	function allocateElements(arrayType,glMode) {
+		var glType,valuesPerEntry;
+		if (arrayType==Uint16Array) {
+			glType=gl.UNSIGNED_SHORT;
+		} else {
+			// TODO
+			throw 'gl type not implemented';
+		}
+		if (glMode==gl.LINES) {
+			valuesPerEntry=2;
+		} else {
+			// TODO triangles
+			throw 'gl mode not implemented';
+		}
+		return allocateData(arrayType,valuesPerEntry,function(elements){
+			elements.bufferData=function(){
+				gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,elements.data,gl.STATIC_DRAW);
+			};
+		},function(section){
+			section.draw=function(){
+				gl.drawElements(
+					glMode,
+					section.length*valuesPerEntry,
+					glType,
+					section.offset*valuesPerEntry*arrayType.BYTES_PER_ELEMENT
+				);
+			};
+		});
+	}
+
+	function makeShapes(N) { // N has to be even
+		var vertices=allocateVertices(Float32Array,3)
+			.add('lowerTip').add('upperTip')
+			.add('lowerRim',N).add('upperRim',N)
+			.add('sphericalRims',(N/2-1)*N)
+		.done();
+		vertices.lowerTip.data[0]=vertices.upperTip.data[0]=0;
+		vertices.lowerTip.data[2]=vertices.upperTip.data[2]=0;
+		vertices.lowerTip.data[1]=-0.5;
+		vertices.upperTip.data[1]=+0.5;
+		for (var i=0;i<N;i++) {
+			vertices.lowerRim.idata(i)[0]=vertices.upperRim.idata(i)[0]=0.5*Math.cos(2*Math.PI*i/N);
+			vertices.lowerRim.idata(i)[2]=vertices.upperRim.idata(i)[2]=0.5*Math.sin(2*Math.PI*i/N);
+			vertices.lowerRim.idata(i)[1]=-0.5;
+			vertices.upperRim.idata(i)[1]=+0.5;
+		}
+		for (var j=0;j<(N/2-1);j++) {
+			for (i=0;i<N;i++) {
+				var x=+0.5*Math.sin(2*Math.PI*(j+1)/N);
+				var y=-0.5*Math.cos(2*Math.PI*(j+1)/N);
+				vertices.sphericalRims.idata(j*N+i)[0]=x*Math.cos(2*Math.PI*i/N);
+				vertices.sphericalRims.idata(j*N+i)[2]=x*Math.sin(2*Math.PI*i/N);
+				vertices.sphericalRims.idata(j*N+i)[1]=y;
+			}
+		}
+
+		var elements=allocateElements(Uint16Array,gl.LINES)
+			.enter('cylinderWireframe')
+				.add('cylinderWireframeLowerRim',N)
+				.add('cylinderWireframeUpperRim',N)
+				.add('cylinderWireframeRibs',N)
+			.exit()
+			.enter('coneWireframe')
+				.add('coneWireframeRim',N)
+				.add('coneWireframeRibs',N)
+			.exit()
+			.enter('sphereWireframe')
+				.add('sphereWireframeRims',N*(N/2-1))
+				.add('sphereWireframeRibs',N*N/2)
+			.exit()
+		.done();
+		for (i=0;i<N;i++) {
+			elements.cylinderWireframeLowerRim.idata(i)[0]=vertices.lowerRim.offset+i;
+			elements.cylinderWireframeLowerRim.idata(i)[1]=vertices.lowerRim.offset+(i+1)%N;
+			elements.cylinderWireframeUpperRim.idata(i)[0]=vertices.upperRim.offset+i;
+			elements.cylinderWireframeUpperRim.idata(i)[1]=vertices.upperRim.offset+(i+1)%N;
+			elements.cylinderWireframeRibs.idata(i)[0]=vertices.lowerRim.offset+i;
+			elements.cylinderWireframeRibs.idata(i)[1]=vertices.upperRim.offset+i;
+		}
+		for (i=0;i<N;i++) {
+			elements.coneWireframeRim.idata(i)[0]=vertices.lowerRim.offset+i;
+			elements.coneWireframeRim.idata(i)[1]=vertices.lowerRim.offset+(i+1)%N;
+			elements.coneWireframeRibs.idata(i)[0]=vertices.lowerRim.offset+i;
+			elements.coneWireframeRibs.idata(i)[1]=vertices.upperTip.offset;
+		}
+		for (j=0;j<N/2;j++) {
+			for (i=0;i<N;i++) {
+				if (j<N/2-1) {
+					elements.sphereWireframeRims.idata(j*N+i)[0]=vertices.sphericalRims.offset+j*N+i;
+					elements.sphereWireframeRims.idata(j*N+i)[1]=vertices.sphericalRims.offset+j*N+(i+1)%N;
+				}
+				elements.sphereWireframeRibs.idata(j*N+i)[0]=( j==0
+					? vertices.lowerTip.offset
+					: vertices.sphericalRims.offset+(j-1)*N+i
+				);
+				elements.sphereWireframeRibs.idata(j*N+i)[1]=( j==N/2-1
+					? vertices.upperTip.offset
+					: vertices.sphericalRims.offset+j*N+i
+				);
+			}
+		}
+
+		var vBuffer=gl.createBuffer();
+		gl.bindBuffer(gl.ARRAY_BUFFER,vBuffer);
+		vertices.bufferData();
+
+		var positionLoc=gl.getAttribLocation(program,'position');
+		gl.vertexAttribPointer(positionLoc,3,gl.FLOAT,false,0,0);
+		gl.enableVertexAttribArray(positionLoc);
+
+		var eBuffer=gl.createBuffer();
+		gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,eBuffer);
+		elements.bufferData();
+
+		var scalingLoc=gl.getUniformLocation(program,'scaling');
+		var rotationLoc=gl.getUniformLocation(program,'rotation');
+		var translationLoc=gl.getUniformLocation(program,'translation');
+		var colorLoc=gl.getUniformLocation(program,'color');
+
+		var Shape=function(type,scaling,rotation,translation){
+			this.type=type;
+			this.scaling=scaling || new Float32Array([1.0,1.0,1.0]);
+			this.rotation=rotation || new Float32Array([0.0,0.0,0.0]);
+			this.translation=translation || new Float32Array([0.0,0.0,0.0]);
+		};
+		Shape.CYLINDER=0;
+		Shape.CONE=1;
+		Shape.SPHERE=2;
+		Shape.names=[
+			'cylinder','cone','sphere'
+		];
+		Shape.prototype.drawWireframe=function(highlighted){
+			gl.uniform3fv(scalingLoc,this.scaling);
+			gl.uniform3fv(rotationLoc,this.rotation);
+			gl.uniform3fv(translationLoc,this.translation);
+			if (highlighted) {
+				gl.uniform4fv(colorLoc,[1.0,0.0,0.0,1.0]);
+			} else {
+				gl.uniform4fv(colorLoc,[0.0,0.0,0.0,1.0]);
+			}
+			if (this.type==Shape.CYLINDER) {
+				elements.cylinderWireframe.draw();
+			} else if (this.type==Shape.CONE) {
+				elements.coneWireframe.draw();
+			} else if (this.type==Shape.SPHERE) {
+				elements.sphereWireframe.draw();
+			}
+		};
+		return Shape;
+	}
+
+	gl.clearColor(1.0,1.0,1.0,1.0);
+	gl.enable(gl.DEPTH_TEST);
+	var program=makeProgram(
+		$('#coursera-geometric-cad-vertex-shader').text(),
+		$('#coursera-geometric-cad-fragment-shader').text()
+	);
+	gl.useProgram(program);
+
+	var Shape=makeShapes(32);
+
+	var shapes=[];
+	var controls,controlShapes,controlButtons;
+	function updateCanvas(highlightedShapeIndex) {
+		gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+		shapes.forEach(function(shape,shapeIndex){
+			shape.drawWireframe(shapeIndex===highlightedShapeIndex);
+		});
+	}
+	function updateControlShapes() {
+		controlShapes.empty().append(shapes.map(function(shape,shapeIndex){
+			return $("<div class='shape'>").append(
+				$("<select>").append(Shape.names.map(function(shapeName,shapeType){
+					return "<option value='"+shapeType+"'"+(shapeType==shape.type?" selected":"")+">"+shapeName+"</option>";
+				})).change(function(){
+					shape.type=parseInt(this.value);
+					updateCanvas();
+				})
+			).append(
+				[
+					{name:'scale',     prop:shape.scaling,     step:'0.01',  digits:2},
+					{name:'rotate',    prop:shape.rotation,    step:'1',     digits:0},
+					{name:'translate', prop:shape.translation, step:'0.005', digits:3},
+				].map(function(transform){
+					return $("<span class='transform'> </span>").append(['x','y','z'].map(function(dirName,dirIndex){
+						return $("<label><span class='transform-name'>"+transform.name+"</span> "+dirName+" </label>").append(
+							$("<input type='number' step='"+transform.step+"' value='"+transform.prop[dirIndex].toFixed(transform.digits)+"'>").on('input',function(){
+								transform.prop[dirIndex]=parseFloat(this.value);
+								updateCanvas(shapeIndex);
+							})
+						);
+					}))
+				})
+			).append(
+				" "
+			).append(
+				$("<button type='button'>Delete</button>").click(function(){
+					shapes.splice(shapeIndex,1);
+					updateCanvas();
+					updateControlShapes();
+				})
+			).hover(function(){
+				updateCanvas(shapeIndex);
+			},function(){
+				updateCanvas();
+			});
+		}));
+	}
+
+	updateCanvas();
+	container.append(
+		controls=$("<div class='controls'>").append(
+			controlShapes=$("<div class='shapes'>")
+		).append(
+			controlButtons=$("<div class='buttons'>").append(Shape.names.map(function(shapeName,shapeType){
+				return $("<button type='button'>Add "+shapeName+"</button>").click(function(){
+					shapes.push(new Shape(shapeType));
+					updateCanvas();
+					updateControlShapes();
+				});
+			}))
+		)
+	);
+});
+</script>
+</head>
+<body>
+<div id='coursera-geometric-cad'>javascript disabled</div>
+</body>
+</html>
