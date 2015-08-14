@@ -4,11 +4,24 @@
 <meta charset='utf-8' />
 <title>Coursera WebGL Assignment 3 - Geometric CAD</title>
 <style>
+body {
+	text-align: center;
+	margin: 0;
+	padding: 0;
+}
+.canvas-container {
+	margin-top: 2px;
+}
 canvas {
 	border: solid 1px #000;
+	vertical-align: bottom;
+}
+.controls {
+	height: calc(100vh - 516px);
+	overflow-y: scroll;
 }
 input {
-	width: 4em;
+	width: 3.7em;
 }
 .shape {
 	border: solid 1px #000;
@@ -74,7 +87,9 @@ input {
 $(function(){
 	var container=$('#coursera-geometric-cad');
 	var canvas=$("<canvas width='512' height='512'></canvas>");
-	container.empty().append(canvas);
+	container.empty().append(
+		$("<div class='canvas-container'>").append(canvas)
+	);
 	var gl=canvas[0].getContext('webgl')||canvas[0].getContext('experimental-webgl');
 
 	function makeProgram(vertexShaderSrc,fragmentShaderSrc) {
@@ -391,10 +406,17 @@ $(function(){
 	function updateCanvas(highlightedShapeIndex) {
 		gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
 		shapes.forEach(function(shape,shapeIndex){
+			if (shapeIndex===highlightedShapeIndex) {
+				shape.drawWireframe(true);
+			}
+		});
+		shapes.forEach(function(shape,shapeIndex){
 			if (highlightedShapeIndex===undefined) {
 				shape.drawSurface();
 			}
-			shape.drawWireframe(shapeIndex===highlightedShapeIndex);
+			if (shapeIndex!==highlightedShapeIndex) {
+				shape.drawWireframe(false);
+			}
 		});
 	}
 	function updateControlShapes() {
