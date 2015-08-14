@@ -159,8 +159,9 @@ $(function(){
 		}
 		if (glMode==gl.LINES) {
 			valuesPerEntry=2;
+		} else if (glMode==gl.TRIANGLES) {
+			valuesPerEntry=3;
 		} else {
-			// TODO triangles
 			throw 'gl mode not implemented';
 		}
 		return allocateData(arrayType,valuesPerEntry,function(elements){
@@ -205,49 +206,104 @@ $(function(){
 			}
 		}
 
-		var elements=allocateElements(Uint16Array,gl.LINES)
-			.enter('cylinderWireframe')
-				.add('cylinderWireframeLowerRim',N)
-				.add('cylinderWireframeUpperRim',N)
-				.add('cylinderWireframeRibs',N)
+		var wireframes=allocateElements(Uint16Array,gl.LINES)
+			.enter('cylinder')
+				.add('cylinderLowerRim',N)
+				.add('cylinderUpperRim',N)
+				.add('cylinderRibs',N)
 			.exit()
-			.enter('coneWireframe')
-				.add('coneWireframeRim',N)
-				.add('coneWireframeRibs',N)
+			.enter('cone')
+				.add('coneRim',N)
+				.add('coneRibs',N)
 			.exit()
-			.enter('sphereWireframe')
-				.add('sphereWireframeRims',N*(N/2-1))
-				.add('sphereWireframeRibs',N*N/2)
+			.enter('sphere')
+				.add('sphereRims',N*(N/2-1))
+				.add('sphereRibs',N*N/2)
 			.exit()
 		.done();
 		for (i=0;i<N;i++) {
-			elements.cylinderWireframeLowerRim.idata(i)[0]=vertices.lowerRim.offset+i;
-			elements.cylinderWireframeLowerRim.idata(i)[1]=vertices.lowerRim.offset+(i+1)%N;
-			elements.cylinderWireframeUpperRim.idata(i)[0]=vertices.upperRim.offset+i;
-			elements.cylinderWireframeUpperRim.idata(i)[1]=vertices.upperRim.offset+(i+1)%N;
-			elements.cylinderWireframeRibs.idata(i)[0]=vertices.lowerRim.offset+i;
-			elements.cylinderWireframeRibs.idata(i)[1]=vertices.upperRim.offset+i;
+			wireframes.cylinderLowerRim.idata(i)[0]=vertices.lowerRim.offset+i;
+			wireframes.cylinderLowerRim.idata(i)[1]=vertices.lowerRim.offset+(i+1)%N;
+			wireframes.cylinderUpperRim.idata(i)[0]=vertices.upperRim.offset+i;
+			wireframes.cylinderUpperRim.idata(i)[1]=vertices.upperRim.offset+(i+1)%N;
+			wireframes.cylinderRibs.idata(i)[0]=vertices.lowerRim.offset+i;
+			wireframes.cylinderRibs.idata(i)[1]=vertices.upperRim.offset+i;
 		}
 		for (i=0;i<N;i++) {
-			elements.coneWireframeRim.idata(i)[0]=vertices.lowerRim.offset+i;
-			elements.coneWireframeRim.idata(i)[1]=vertices.lowerRim.offset+(i+1)%N;
-			elements.coneWireframeRibs.idata(i)[0]=vertices.lowerRim.offset+i;
-			elements.coneWireframeRibs.idata(i)[1]=vertices.upperTip.offset;
+			wireframes.coneRim.idata(i)[0]=vertices.lowerRim.offset+i;
+			wireframes.coneRim.idata(i)[1]=vertices.lowerRim.offset+(i+1)%N;
+			wireframes.coneRibs.idata(i)[0]=vertices.lowerRim.offset+i;
+			wireframes.coneRibs.idata(i)[1]=vertices.upperTip.offset;
 		}
 		for (j=0;j<N/2;j++) {
 			for (i=0;i<N;i++) {
 				if (j<N/2-1) {
-					elements.sphereWireframeRims.idata(j*N+i)[0]=vertices.sphericalRims.offset+j*N+i;
-					elements.sphereWireframeRims.idata(j*N+i)[1]=vertices.sphericalRims.offset+j*N+(i+1)%N;
+					wireframes.sphereRims.idata(j*N+i)[0]=vertices.sphericalRims.offset+j*N+i;
+					wireframes.sphereRims.idata(j*N+i)[1]=vertices.sphericalRims.offset+j*N+(i+1)%N;
 				}
-				elements.sphereWireframeRibs.idata(j*N+i)[0]=( j==0
+				wireframes.sphereRibs.idata(j*N+i)[0]=( j==0
 					? vertices.lowerTip.offset
 					: vertices.sphericalRims.offset+(j-1)*N+i
 				);
-				elements.sphereWireframeRibs.idata(j*N+i)[1]=( j==N/2-1
+				wireframes.sphereRibs.idata(j*N+i)[1]=( j==N/2-1
 					? vertices.upperTip.offset
 					: vertices.sphericalRims.offset+j*N+i
 				);
+			}
+		}
+
+		var surfaces=allocateElements(Uint16Array,gl.TRIANGLES)
+			.enter('cylinder')
+				.add('cylinderBottom',N)
+				.add('cylinderTop',N)
+				.add('cylinderSide',2*N)
+			.exit()
+			.enter('cone')
+				.add('coneBottom',N)
+				.add('coneSide',N)
+			.exit()
+			.enter('sphere')
+				.add('sphereBottom',N)
+				.add('sphereTop',N)
+				.add('sphereSide',2*N*(N/2-2))
+			.exit()
+		.done();
+		for (i=0;i<N;i++) {
+			surfaces.cylinderBottom.idata(i)[0]=vertices.lowerTip.offset;
+			surfaces.cylinderBottom.idata(i)[1]=vertices.lowerRim.offset+i;
+			surfaces.cylinderBottom.idata(i)[2]=vertices.lowerRim.offset+(i+1)%N;
+			surfaces.cylinderTop.idata(i)[0]=vertices.upperTip.offset;
+			surfaces.cylinderTop.idata(i)[1]=vertices.upperRim.offset+i;
+			surfaces.cylinderTop.idata(i)[2]=vertices.upperRim.offset+(i+1)%N;
+			surfaces.cylinderSide.idata(2*i+0)[0]=vertices.lowerRim.offset+i;
+			surfaces.cylinderSide.idata(2*i+0)[1]=vertices.lowerRim.offset+(i+1)%N;
+			surfaces.cylinderSide.idata(2*i+0)[2]=vertices.upperRim.offset+i;
+			surfaces.cylinderSide.idata(2*i+1)[0]=vertices.lowerRim.offset+(i+1)%N;
+			surfaces.cylinderSide.idata(2*i+1)[1]=vertices.upperRim.offset+(i+1)%N;
+			surfaces.cylinderSide.idata(2*i+1)[2]=vertices.upperRim.offset+i;
+		}
+		for (i=0;i<N;i++) {
+			surfaces.coneBottom.idata(i)[0]=vertices.lowerTip.offset;
+			surfaces.coneBottom.idata(i)[1]=vertices.lowerRim.offset+i;
+			surfaces.coneBottom.idata(i)[2]=vertices.lowerRim.offset+(i+1)%N;
+			surfaces.coneSide.idata(i)[0]=vertices.upperTip.offset;
+			surfaces.coneSide.idata(i)[1]=vertices.lowerRim.offset+i;
+			surfaces.coneSide.idata(i)[2]=vertices.lowerRim.offset+(i+1)%N;
+		}
+		for (i=0;i<N;i++) {
+			surfaces.sphereBottom.idata(i)[0]=vertices.lowerTip.offset;
+			surfaces.sphereBottom.idata(i)[1]=vertices.sphericalRims.offset+0*N+i;
+			surfaces.sphereBottom.idata(i)[2]=vertices.sphericalRims.offset+0*N+(i+1)%N;
+			surfaces.sphereTop.idata(i)[0]=vertices.upperTip.offset;
+			surfaces.sphereTop.idata(i)[1]=vertices.sphericalRims.offset+(N/2-2)*N+i;
+			surfaces.sphereTop.idata(i)[2]=vertices.sphericalRims.offset+(N/2-2)*N+(i+1)%N;
+			for (j=0;j<N/2-2;j++) {
+				surfaces.sphereSide.idata(2*(j*N+i)+0)[0]=vertices.sphericalRims.offset+j*N+i;
+				surfaces.sphereSide.idata(2*(j*N+i)+0)[1]=vertices.sphericalRims.offset+j*N+(i+1)%N;
+				surfaces.sphereSide.idata(2*(j*N+i)+0)[2]=vertices.sphericalRims.offset+(j+1)*N+i;
+				surfaces.sphereSide.idata(2*(j*N+i)+1)[0]=vertices.sphericalRims.offset+j*N+(i+1)%N;
+				surfaces.sphereSide.idata(2*(j*N+i)+1)[1]=vertices.sphericalRims.offset+(j+1)*N+(i+1)%N;
+				surfaces.sphereSide.idata(2*(j*N+i)+1)[2]=vertices.sphericalRims.offset+(j+1)*N+i;
 			}
 		}
 
@@ -259,9 +315,13 @@ $(function(){
 		gl.vertexAttribPointer(positionLoc,3,gl.FLOAT,false,0,0);
 		gl.enableVertexAttribArray(positionLoc);
 
-		var eBuffer=gl.createBuffer();
-		gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,eBuffer);
-		elements.bufferData();
+		var wireframeBuffer=gl.createBuffer();
+		gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,wireframeBuffer);
+		wireframes.bufferData();
+
+		var surfaceBuffer=gl.createBuffer();
+		gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,surfaceBuffer);
+		surfaces.bufferData();
 
 		var scalingLoc=gl.getUniformLocation(program,'scaling');
 		var rotationLoc=gl.getUniformLocation(program,'rotation');
@@ -280,21 +340,37 @@ $(function(){
 		Shape.names=[
 			'cylinder','cone','sphere'
 		];
-		Shape.prototype.drawWireframe=function(highlighted){
+		Shape.prototype.setupTransformations=function(){
 			gl.uniform3fv(scalingLoc,this.scaling);
 			gl.uniform3fv(rotationLoc,this.rotation);
 			gl.uniform3fv(translationLoc,this.translation);
+		}
+		Shape.prototype.drawSurface=function(){
+			this.setupTransformations();
+			gl.uniform4fv(colorLoc,[0.8,0.8,0.8,1.0]);
+			gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,surfaceBuffer);
+			if (this.type==Shape.CYLINDER) {
+				surfaces.cylinder.draw();
+			} else if (this.type==Shape.CONE) {
+				surfaces.cone.draw();
+			} else if (this.type==Shape.SPHERE) {
+				surfaces.sphere.draw();
+			}
+		}
+		Shape.prototype.drawWireframe=function(highlighted){
+			this.setupTransformations();
 			if (highlighted) {
 				gl.uniform4fv(colorLoc,[1.0,0.0,0.0,1.0]);
 			} else {
 				gl.uniform4fv(colorLoc,[0.0,0.0,0.0,1.0]);
 			}
+			gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,wireframeBuffer);
 			if (this.type==Shape.CYLINDER) {
-				elements.cylinderWireframe.draw();
+				wireframes.cylinder.draw();
 			} else if (this.type==Shape.CONE) {
-				elements.coneWireframe.draw();
+				wireframes.cone.draw();
 			} else if (this.type==Shape.SPHERE) {
-				elements.sphereWireframe.draw();
+				wireframes.sphere.draw();
 			}
 		};
 		return Shape;
@@ -315,6 +391,9 @@ $(function(){
 	function updateCanvas(highlightedShapeIndex) {
 		gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
 		shapes.forEach(function(shape,shapeIndex){
+			if (highlightedShapeIndex===undefined) {
+				shape.drawSurface();
+			}
 			shape.drawWireframe(shapeIndex===highlightedShapeIndex);
 		});
 	}
