@@ -1,0 +1,627 @@
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+<meta charset='utf-8' />
+<title>Coursera WebGL Assignment 4 - Adding Lighting</title>
+<style>
+body {
+	text-align: center;
+	margin: 0;
+	padding: 0;
+}
+.canvas-container {
+	margin-top: 2px;
+}
+canvas {
+	border: solid 1px #000;
+	vertical-align: bottom;
+}
+.light-controls {
+	display: inline-block;
+	width: 150px;
+	margin: 0 2px;
+	border: solid 1px #000;
+}
+.controls {
+	height: calc(100vh - 516px);
+	min-height: 10em;
+	overflow-y: scroll;
+}
+label {
+	white-space: nowrap;
+}
+.controls input {
+	width: 3.7em;
+}
+.shape {
+	border: solid 1px #000;
+	padding: 2px;
+	margin: 2px 0;
+}
+.shape:hover {
+	border-color: #F00;
+}
+.transform label:not(:first-child) .transform-name {
+	display: none;
+}
+</style>
+<script id='coursera-geometric-cad-vertex-shader' type='x-shader/x-vertex'>
+	uniform vec3 scaling;
+	uniform vec3 rotation;
+	uniform vec3 translation;
+	attribute vec4 position;
+	attribute vec3 normal;
+	varying vec3 interpolatedNormal;
+
+	void main() {
+		vec3 m=scaling;
+		vec3 s=sin(radians(rotation));
+		vec3 c=cos(radians(rotation));
+		vec3 t=translation;
+
+		gl_Position=mat4( // translate
+			1.0, 0.0, 0.0, 0.0,
+			0.0, 1.0, 0.0, 0.0,
+			0.0, 0.0, 1.0, 0.0,
+			t.x, t.y, t.z, 1.0
+		)*mat4( // rotate z
+			c.z,-s.z, 0.0, 0.0,
+			s.z, c.z, 0.0, 0.0,
+			0.0, 0.0, 1.0, 0.0,
+			0.0, 0.0, 0.0, 1.0
+		)*mat4( // rotate y
+			c.y, 0.0,-s.y, 0.0,
+			0.0, 1.0, 0.0, 0.0,
+			s.y, 0.0, c.y, 0.0,
+			0.0, 0.0, 0.0, 1.0
+		)*mat4( // rotate x
+			1.0, 0.0, 0.0, 0.0,
+			0.0, c.x, s.x, 0.0,
+			0.0,-s.x, c.x, 0.0,
+			0.0, 0.0, 0.0, 1.0
+		)*mat4( // scale
+			m.x, 0.0, 0.0, 0.0,
+			0.0, m.y, 0.0, 0.0,
+			0.0, 0.0, m.z, 0.0,
+			0.0, 0.0, 0.0, 1.0
+		)*position;
+
+		interpolatedNormal=mat3( // rotate z
+			c.z,-s.z, 0.0,
+			s.z, c.z, 0.0,
+			0.0, 0.0, 1.0
+		)*mat3( // rotate y
+			c.y, 0.0,-s.y,
+			0.0, 1.0, 0.0,
+			s.y, 0.0, c.y
+		)*mat3( // rotate x
+			1.0, 0.0, 0.0,
+			0.0, c.x, s.x,
+			0.0,-s.x, c.x
+		)*mat3( // scale
+			1.0/m.x, 0.0, 0.0,
+			0.0, 1.0/m.y, 0.0,
+			0.0, 0.0, 1.0/m.z
+		)*normal;
+	}
+</script>
+<script id='coursera-geometric-cad-fragment-shader' type='x-shader/x-fragment'>
+	precision mediump float;
+	uniform vec3 ambientColor;
+	uniform vec3 diffuseColor;
+	uniform vec3 specularColor;
+	uniform float shininess;
+	uniform vec2 lightPosition0;
+	uniform vec2 lightPosition1;
+	uniform float lightAngle0;
+	uniform float lightAngle1;
+	uniform vec3 lightDiffuseColor0;
+	uniform vec3 lightDiffuseColor1;
+	uniform vec3 lightSpecularColor1;
+	uniform vec3 lightSpecularColor0;
+	varying vec3 interpolatedNormal;
+
+	vec3 light(vec2 lightPosition, float lightAngle) {
+		float s=sin(radians(lightAngle));
+		float c=cos(radians(lightAngle));
+		vec2 p=mat2(
+			c,-s,
+			s, c
+		)*lightPosition;
+		return normalize(vec3(p,-1.0));
+	}
+
+	void main() {
+		vec3 V=vec3(0.0,0.0,-1.0);
+		vec3 N=normalize(interpolatedNormal);
+		vec3 L0=light(lightPosition0,lightAngle0);
+		vec3 L1=light(lightPosition1,lightAngle1);
+		vec3 H0=normalize(L0+V);
+		vec3 H1=normalize(L1+V);
+		gl_FragColor=vec4(
+			ambientColor
+			+diffuseColor*lightDiffuseColor0*max(0.0,dot(L0,N))+specularColor*lightSpecularColor0*pow(max(0.0,dot(H0,N)),shininess)
+			+diffuseColor*lightDiffuseColor1*max(0.0,dot(L1,N))+specularColor*lightSpecularColor1*pow(max(0.0,dot(H1,N)),shininess)
+		,1.0);
+	}
+</script>
+<script src='http://code.jquery.com/jquery-2.1.4.min.js'></script>
+<script>
+"use strict";
+$(function(){
+	var container=$('#coursera-geometric-cad');
+	var canvas=$("<canvas width='512' height='512'></canvas>");
+	container.empty().append(
+		$("<div class='canvas-container'>").append(canvas)
+	);
+	var gl=canvas[0].getContext('webgl')||canvas[0].getContext('experimental-webgl');
+
+	function makeProgram(vertexShaderSrc,fragmentShaderSrc) {
+		var vertexShader=gl.createShader(gl.VERTEX_SHADER);
+		gl.shaderSource(vertexShader,vertexShaderSrc);
+		gl.compileShader(vertexShader);
+		if (!gl.getShaderParameter(vertexShader,gl.COMPILE_STATUS)) console.log(gl.getShaderInfoLog(vertexShader));
+		var fragmentShader=gl.createShader(gl.FRAGMENT_SHADER);
+		gl.shaderSource(fragmentShader,fragmentShaderSrc);
+		gl.compileShader(fragmentShader);
+		if (!gl.getShaderParameter(fragmentShader,gl.COMPILE_STATUS)) console.log(gl.getShaderInfoLog(fragmentShader));
+		var program=gl.createProgram();
+		gl.attachShader(program,vertexShader);
+		gl.attachShader(program,fragmentShader);
+		gl.linkProgram(program);
+		return program;
+	}
+
+	function allocateData(arrayType,valuesPerEntry,processEntries,processEntriesSection) {
+		var offset=0;
+		var sections=[];
+		var sectionStack=[];
+		var state={
+			enter: function(name){
+				var section={
+					name: name,
+					startOffset: offset,
+				};
+				sectionStack.push(section);
+				return state;
+			},
+			exit: function(){
+				var section=sectionStack.pop();
+				section.endOffset=offset;
+				sections.push(section);
+				return state;
+			},
+			add: function(name,length){
+				state.enter(name);
+				offset+=length||1;
+				return state.exit();
+			},
+			done: function(){
+				// TODO assert empty stack
+				var entries={};
+				sections.forEach(function(section){
+					entries[section.name]={
+						length: section.endOffset-section.startOffset,
+						offset: section.startOffset,
+						setData: function(i,values){
+							var off=(this.offset+i)*valuesPerEntry;
+							values.forEach(function(val,j){
+								entries.data[off+j]=val;
+							});
+						},
+					};
+					processEntriesSection(entries[section.name]);
+				});
+				entries.data=new arrayType(offset*valuesPerEntry);
+				processEntries(entries);
+				return entries;
+			},
+		};
+		return state;
+	}
+	function allocateVertices(arrayType,valuesPerVertex) {
+		return allocateData(arrayType,valuesPerVertex,function(vertices){
+			vertices.bufferData=function(){
+				gl.bufferData(gl.ARRAY_BUFFER,vertices.data,gl.STATIC_DRAW);
+			};
+		},function(section){
+			// TODO draw
+		});
+	}
+	function allocateElements(arrayType,glMode) {
+		var glType,valuesPerEntry;
+		if (arrayType==Uint16Array) {
+			glType=gl.UNSIGNED_SHORT;
+		} else {
+			// TODO
+			throw 'gl type not implemented';
+		}
+		if (glMode==gl.LINES) {
+			valuesPerEntry=2;
+		} else if (glMode==gl.TRIANGLES) {
+			valuesPerEntry=3;
+		} else {
+			throw 'gl mode not implemented';
+		}
+		return allocateData(arrayType,valuesPerEntry,function(elements){
+			elements.bufferData=function(){
+				gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,elements.data,gl.STATIC_DRAW);
+			};
+		},function(section){
+			section.draw=function(){
+				gl.drawElements(
+					glMode,
+					section.length*valuesPerEntry,
+					glType,
+					section.offset*valuesPerEntry*arrayType.BYTES_PER_ELEMENT
+				);
+			};
+		});
+	}
+
+	function parseColor(color) {
+		return [
+			parseInt(color.substring(1,3),16)/255,
+			parseInt(color.substring(3,5),16)/255,
+			parseInt(color.substring(5,7),16)/255,
+		];
+	}
+
+	function makeShapes(N) { // N has to be even
+		var vertices=allocateVertices(Float32Array,6)
+			.add('lowerTip').add('upperTip')
+			.add('lowerCapRim',N).add('upperCapRim',N)
+			.add('lowerSideRim',N).add('upperSideRim',N)
+			.add('sphericalRims',(N/2-1)*N)
+		.done();
+		vertices.lowerTip.setData(0,[ 0.0,-0.5, 0.0, 0.0,-1.0, 0.0]);
+		vertices.upperTip.setData(0,[ 0.0,+0.5, 0.0, 0.0,+1.0, 0.0]);
+		var x,y,c,s;
+		for (var i=0;i<N;i++) {
+			c=Math.cos(2*Math.PI*i/N);
+			s=Math.sin(2*Math.PI*i/N);
+			vertices.lowerCapRim.setData( i,[0.5*c,-0.5,0.5*s,0.0,-1.0,0.0]);
+			vertices.lowerSideRim.setData(i,[0.5*c,-0.5,0.5*s,c,0.0,s]);
+			vertices.upperCapRim.setData( i,[0.5*c,+0.5,0.5*s,0.0,+1.0,0.0]);
+			vertices.upperSideRim.setData(i,[0.5*c,+0.5,0.5*s,c,0.0,s]);
+		}
+		for (var j=0;j<(N/2-1);j++) {
+			for (i=0;i<N;i++) {
+				x=Math.sin(2*Math.PI*(j+1)/N);
+				y=Math.cos(2*Math.PI*(j+1)/N);
+				c=Math.cos(2*Math.PI*i/N);
+				s=Math.sin(2*Math.PI*i/N);
+				vertices.sphericalRims.setData(j*N+i,[+0.5*x*c,-0.5*y,+0.5*x*s,+x*c,-y,+x*s]);
+			}
+		}
+
+		var surfaces=allocateElements(Uint16Array,gl.TRIANGLES)
+			.enter('cylinder')
+				.add('cylinderBottom',N)
+				.add('cylinderTop',N)
+				.add('cylinderSide',2*N)
+			.exit()
+			.enter('sphere')
+				.add('sphereBottom',N)
+				.add('sphereTop',N)
+				.add('sphereSide',2*N*(N/2-2))
+			.exit()
+		.done();
+		for (i=0;i<N;i++) {
+			surfaces.cylinderBottom.setData(i,[
+				vertices.lowerTip.offset,
+				vertices.lowerCapRim.offset+i,
+				vertices.lowerCapRim.offset+(i+1)%N,
+			]);
+			surfaces.cylinderTop.setData(i,[
+				vertices.upperTip.offset,
+				vertices.upperCapRim.offset+i,
+				vertices.upperCapRim.offset+(i+1)%N,
+			]);
+			surfaces.cylinderSide.setData(2*i+0,[
+				vertices.lowerSideRim.offset+i,
+				vertices.lowerSideRim.offset+(i+1)%N,
+				vertices.upperSideRim.offset+i,
+			]);
+			surfaces.cylinderSide.setData(2*i+1,[
+				vertices.lowerSideRim.offset+(i+1)%N,
+				vertices.upperSideRim.offset+(i+1)%N,
+				vertices.upperSideRim.offset+i,
+			]);
+		}
+		for (i=0;i<N;i++) {
+			surfaces.sphereBottom.setData(i,[
+				vertices.lowerTip.offset,
+				vertices.sphericalRims.offset+0*N+i,
+				vertices.sphericalRims.offset+0*N+(i+1)%N,
+			]);
+			surfaces.sphereTop.setData(i,[
+				vertices.upperTip.offset,
+				vertices.sphericalRims.offset+(N/2-2)*N+i,
+				vertices.sphericalRims.offset+(N/2-2)*N+(i+1)%N,
+			]);
+			for (j=0;j<N/2-2;j++) {
+				surfaces.sphereSide.setData(2*(j*N+i)+0,[
+					vertices.sphericalRims.offset+j*N+i,
+					vertices.sphericalRims.offset+j*N+(i+1)%N,
+					vertices.sphericalRims.offset+(j+1)*N+i,
+				]);
+				surfaces.sphereSide.setData(2*(j*N+i)+1,[
+					vertices.sphericalRims.offset+j*N+(i+1)%N,
+					vertices.sphericalRims.offset+(j+1)*N+(i+1)%N,
+					vertices.sphericalRims.offset+(j+1)*N+i,
+				]);
+			}
+		}
+
+		var vBuffer=gl.createBuffer();
+		gl.bindBuffer(gl.ARRAY_BUFFER,vBuffer);
+		vertices.bufferData();
+
+		var positionLoc=gl.getAttribLocation(program,'position');
+		gl.vertexAttribPointer(
+			positionLoc,3,gl.FLOAT,false,
+			Float32Array.BYTES_PER_ELEMENT*6,
+			Float32Array.BYTES_PER_ELEMENT*0
+		);
+		gl.enableVertexAttribArray(positionLoc);
+		var normalLoc=gl.getAttribLocation(program,'normal');
+		gl.vertexAttribPointer(
+			normalLoc,3,gl.FLOAT,false,
+			Float32Array.BYTES_PER_ELEMENT*6,
+			Float32Array.BYTES_PER_ELEMENT*3
+		);
+		gl.enableVertexAttribArray(normalLoc);
+
+		var surfaceBuffer=gl.createBuffer();
+		gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,surfaceBuffer);
+		surfaces.bufferData();
+
+		var scalingLoc=gl.getUniformLocation(program,'scaling');
+		var rotationLoc=gl.getUniformLocation(program,'rotation');
+		var translationLoc=gl.getUniformLocation(program,'translation');
+		var ambientColorLoc=gl.getUniformLocation(program,'ambientColor');
+		var diffuseColorLoc=gl.getUniformLocation(program,'diffuseColor');
+		var specularColorLoc=gl.getUniformLocation(program,'specularColor');
+		var shininessLoc=gl.getUniformLocation(program,'shininess');
+
+		var Shape=function(type,scaling,rotation,translation){
+			this.type=type;
+			this.scaling=scaling || new Float32Array([1.0,1.0,1.0]);
+			this.rotation=rotation || new Float32Array([0.0,0.0,0.0]);
+			this.translation=translation || new Float32Array([0.0,0.0,0.0]);
+			this.ambientColor ='#202020';
+			this.diffuseColor ='#404040';
+			this.specularColor='#808080';
+			this.shininess=100.0;
+		};
+		Shape.CYLINDER=0;
+		Shape.SPHERE=1;
+		Shape.names=[
+			'cylinder','sphere'
+		];
+		Shape.prototype.setupTransformations=function(){
+			gl.uniform3fv(scalingLoc,this.scaling);
+			gl.uniform3fv(rotationLoc,this.rotation);
+			gl.uniform3fv(translationLoc,this.translation);
+		}
+		Shape.prototype.draw=function(){
+			this.setupTransformations();
+			gl.uniform3fv(ambientColorLoc,parseColor(this.ambientColor));
+			gl.uniform3fv(diffuseColorLoc,parseColor(this.diffuseColor));
+			gl.uniform3fv(specularColorLoc,parseColor(this.specularColor));
+			gl.uniform1f(shininessLoc,this.shininess);
+			gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,surfaceBuffer);
+			if (this.type==Shape.CYLINDER) {
+				surfaces.cylinder.draw();
+			} else if (this.type==Shape.SPHERE) {
+				surfaces.sphere.draw();
+			}
+		}
+		return Shape;
+	}
+
+	function makeLights() {
+		var nLights=2;
+		var lightPositionLocs=[];
+		var lightAngleLocs=[];
+		var lightDiffuseColorLocs=[];
+		var lightSpecularColorLocs=[];
+		for (var i=0;i<nLights;i++) {
+			lightPositionLocs.push(gl.getUniformLocation(program,'lightPosition'+i));
+			lightAngleLocs.push(gl.getUniformLocation(program,'lightAngle'+i));
+			lightDiffuseColorLocs.push(gl.getUniformLocation(program,'lightDiffuseColor'+i));
+			lightSpecularColorLocs.push(gl.getUniformLocation(program,'lightSpecularColor'+i));
+		}
+		var Light=function(index,position,diffuseColor,specularColor){
+			this.index=index;
+			this.isEnabled=true;
+			this.position=position;
+			this.angle=0;
+			this.diffuseColor=diffuseColor;
+			this.specularColor=specularColor;
+			this.isAnimated=false;
+		};
+		Light.prototype.updateAnimation=function(t){
+			if (this.isAnimated) {
+				this.angle+=(this.index&1?+1:-1)*t*360/5000;
+			}
+		}
+		Light.prototype.setPosition=function(position){
+			this.position=position;
+			this.angle=0;
+		}
+		Light.prototype.draw=function(){
+			gl.uniform2fv(lightPositionLocs[this.index],this.position);
+			gl.uniform1f(lightAngleLocs[this.index],this.angle);
+			gl.uniform3fv(lightDiffuseColorLocs[this.index],parseColor(
+				this.isEnabled ? this.diffuseColor : '#000000'
+			));
+			gl.uniform3fv(lightSpecularColorLocs[this.index],parseColor(
+				this.isEnabled ? this.specularColor : '#000000'
+			));
+		}
+		return Light;
+	}
+
+	gl.clearColor(1.0,1.0,1.0,1.0);
+	gl.enable(gl.DEPTH_TEST);
+	var program=makeProgram(
+		$('#coursera-geometric-cad-vertex-shader').text(),
+		$('#coursera-geometric-cad-fragment-shader').text()
+	);
+	gl.useProgram(program);
+
+	var Light=makeLights();
+	var Shape=makeShapes(64);
+
+	var lights=[
+		new Light(0,[-1.0,+1.0],'#FFCCCC','#FFCCCC'),
+		new Light(1,[+0.5,+2.0],'#CCCCFF','#CCCCFF'),
+	]
+	var shapes=[];
+	var controls,controlShapes,controlButtons;
+	function updateCanvas() {
+		gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+		lights.forEach(function(light){
+			light.draw();
+		});
+		shapes.forEach(function(shape){
+			shape.draw();
+		});
+	}
+	function updateControlShapes() {
+		controlShapes.empty().append(shapes.map(function(shape,shapeIndex){
+			return $("<div class='shape'>").append(
+				$("<select>").append(Shape.names.map(function(shapeName,shapeType){
+					return "<option value='"+shapeType+"'"+(shapeType==shape.type?" selected":"")+">"+shapeName+"</option>";
+				})).change(function(){
+					shape.type=parseInt(this.value);
+				})
+			).append(
+				[
+					{name:'scale',     prop:shape.scaling,     step:'0.01',  digits:2},
+					{name:'rotate',    prop:shape.rotation,    step:'1',     digits:0},
+					{name:'translate', prop:shape.translation, step:'0.005', digits:3},
+				].map(function(transform){
+					return $("<span class='transform'> </span>").append(['x','y','z'].map(function(dirName,dirIndex){
+						return $("<label><span class='transform-name'>"+transform.name+"</span> "+dirName+" </label>").append(
+							$("<input type='number' step='"+transform.step+"' value='"+transform.prop[dirIndex].toFixed(transform.digits)+"'>").on('input',function(){
+								transform.prop[dirIndex]=parseFloat(this.value);
+							})
+						);
+					}))
+				})
+			).append(
+				['ambient','diffuse','specular'].map(function(colorType){
+					var propName=colorType+'Color';
+					return $("<span> </span>").append(
+						$("<label>"+colorType+" </label>").append(
+							$("<input type='color' />").val(shape[propName]).on('change',function(){
+								shape[propName]=this.value;
+							})
+						)
+					)
+				})
+			).append(
+					$("<span> </span>").append(
+						$("<label>shininess </label>").append(
+							$("<input type='number' min='0' step='10' />").val(shape.shininess).on('input',function(){
+								shape.shininess=parseFloat(this.value);
+							})
+						)
+					)
+			).append(
+				" "
+			).append(
+				$("<button type='button'>Delete</button>").click(function(){
+					shapes.splice(shapeIndex,1);
+					updateControlShapes();
+				})
+			);
+		}));
+	}
+
+	function getLightControls(lightIndex,mouseButtonName) {
+		var light=lights[lightIndex];
+		return $("<div class='light-controls'>").append(
+			"<div><strong>light "+lightIndex+"</strong></div>"
+		).append(
+			$("<div>").append(
+				$("<label> enabled</label>").prepend(
+					$("<input type='checkbox' checked>").change(function(){
+						light.isEnabled=!!this.checked;
+					})
+				)
+			)
+		).append(
+			['diffuse','specular'].map(function(colorType){
+				var propName=colorType+'Color';
+				return $("<div>").append(
+					$("<label>"+colorType+" </label>").append(
+						$("<input type='color' />").val(light[propName]).on('change',function(){
+							light[propName]=this.value;
+						})
+					)
+				)
+			})
+		).append(
+			$("<div>").append(
+				$("<label> animated</label>").prepend(
+					$("<input type='checkbox'>").change(function(){
+						light.isAnimated=!!this.checked;
+					})
+				)
+			)
+		).append(
+			"<p>Click/drag "+mouseButtonName+" mouse button on the canvas to move the light.</p>"
+		);
+	}
+
+	canvas.on('mousedown mousemove',function(ev){
+		var o=canvas.offset();
+		var w=canvas.width();
+		var h=canvas.height();
+		var pos=[
+			6*(2*(ev.pageX-o.left)/w-1),
+			6*(-2*(ev.pageY-o.top)/h+1),
+		];
+		if (ev.buttons&1) lights[0].setPosition(pos);
+		if (ev.buttons&2) lights[1].setPosition(pos);
+	}).on('contextmenu',function(){
+		return false;
+	});
+
+	canvas.before(getLightControls(0,'left'));
+	canvas.after(getLightControls(1,'right'));
+	container.append(
+		controls=$("<div class='controls'>").append(
+			controlShapes=$("<div class='shapes'>")
+		).append(
+			controlButtons=$("<div class='buttons'>").append(Shape.names.map(function(shapeName,shapeType){
+				return $("<button type='button'>Add "+shapeName+"</button>").click(function(){
+					shapes.push(new Shape(shapeType));
+					updateControlShapes();
+				});
+			}))
+		)
+	);
+
+	var prevTime=performance.now();
+	function animate(time) {
+		var t=time-prevTime;
+		lights.forEach(function(light){
+			light.updateAnimation(t);
+		});
+		updateCanvas();
+		prevTime=time;
+		requestAnimationFrame(animate);
+	}
+	requestAnimationFrame(animate);
+});
+</script>
+</head>
+<body>
+<div id='coursera-geometric-cad'>javascript disabled</div>
+</body>
+</html>
