@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+<meta charset='utf-8' />
+<title>Coursera WebGL Assignment 5 - Texture Mapping to a Sphere</title>
+<style>
+body {
+	text-align: center;
+	margin: 0;
+	padding: 0;
+}
+.canvas-container {
+	margin-top: 2px;
+}
+canvas {
+	border: solid 1px #000;
+	vertical-align: bottom;
+}
+.controls {
+	height: calc(100vh - 516px);
+	min-height: 10em;
+	overflow-y: scroll;
+}
+label {
+	white-space: nowrap;
+}
+.controls input {
+	width: 3.7em;
+}
+.shape {
+	border: solid 1px #000;
+	padding: 2px;
+	margin: 2px 0;
+}
+.transform label:not(:first-child) .transform-name {
+	display: none;
+}
+</style>
+<script id='coursera-geometric-cad-vertex-shader' type='x-shader/x-vertex'>
+	uniform vec3 scaling;
+	uniform vec3 rotation;
+	uniform vec3 translation;
+	attribute vec4 position;
+	attribute vec2 texCoords;
+	varying vec2 interpTexCoords;
+
+	void main() {
+		vec3 m=scaling;
+		vec3 s=sin(radians(rotation));
+		vec3 c=cos(radians(rotation));
+		vec3 t=translation;
+
+		gl_Position=mat4( // translate
+			1.0, 0.0, 0.0, 0.0,
+			0.0, 1.0, 0.0, 0.0,
+			0.0, 0.0, 1.0, 0.0,
+			t.x, t.y, t.z, 1.0
+		)*mat4( // rotate z
+			c.z,-s.z, 0.0, 0.0,
+			s.z, c.z, 0.0, 0.0,
+			0.0, 0.0, 1.0, 0.0,
+			0.0, 0.0, 0.0, 1.0
+		)*mat4( // rotate y
+			c.y, 0.0,-s.y, 0.0,
+			0.0, 1.0, 0.0, 0.0,
+			s.y, 0.0, c.y, 0.0,
+			0.0, 0.0, 0.0, 1.0
+		)*mat4( // rotate x
+			1.0, 0.0, 0.0, 0.0,
+			0.0, c.x, s.x, 0.0,
+			0.0,-s.x, c.x, 0.0,
+			0.0, 0.0, 0.0, 1.0
+		)*mat4( // scale
+			m.x, 0.0, 0.0, 0.0,
+			0.0, m.y, 0.0, 0.0,
+			0.0, 0.0, m.z, 0.0,
+			0.0, 0.0, 0.0, 1.0
+		)*position;
+
+		interpTexCoords=texCoords;
+	}
+</script>
+<script id='coursera-geometric-cad-fragment-shader' type='x-shader/x-fragment'>
+	precision mediump float;
+	varying vec2 interpTexCoords;
+	uniform sampler2D sampler;
+
+	void main() {
+		gl_FragColor=texture2D(sampler,interpTexCoords);
+	}
+</script>
+<script src='http://code.jquery.com/jquery-2.1.4.min.js'></script>
+<script>
+"use strict";
+$(function(){
+	var container=$('#coursera-geometric-cad');
+	var canvas=$("<canvas width='512' height='512'></canvas>");
+	container.empty().append(
+		$("<div class='canvas-container'>").append(canvas)
+	);
+	var gl=canvas[0].getContext('webgl')||canvas[0].getContext('experimental-webgl');
+
+	function makeProgram(vertexShaderSrc,fragmentShaderSrc) {
+		var vertexShader=gl.createShader(gl.VERTEX_SHADER);
+		gl.shaderSource(vertexShader,vertexShaderSrc);
+		gl.compileShader(vertexShader);
+		if (!gl.getShaderParameter(vertexShader,gl.COMPILE_STATUS)) console.log(gl.getShaderInfoLog(vertexShader));
+		var fragmentShader=gl.createShader(gl.FRAGMENT_SHADER);
+		gl.shaderSource(fragmentShader,fragmentShaderSrc);
+		gl.compileShader(fragmentShader);
+		if (!gl.getShaderParameter(fragmentShader,gl.COMPILE_STATUS)) console.log(gl.getShaderInfoLog(fragmentShader));
+		var program=gl.createProgram();
+		gl.attachShader(program,vertexShader);
+		gl.attachShader(program,fragmentShader);
+		gl.linkProgram(program);
+		return program;
+	}
+
+	function makeSphere(onloadCallback) {
+		var nLat=32;
+		var nLon=64;
+		var nLatLonTriangles=2*nLon*(nLat-1);
+		var nLatLonVertices=nLatLonTriangles*3;
+		var tetraDepth=6;
+		var nTetraTriangles=Math.pow(4,tetraDepth+1);
+		var nTetraVertices=nTetraTriangles*3;
+		var vertices=new Float32Array((nLatLonVertices+nTetraVertices)*5);
+		var iv=0;
+		function pushVertex(v) {
+			for (var i=0;i<5;i++) {
+				vertices[iv++]=v[i];
+			}
+		}
+		function latLonSphere() {
+			function pushLatLonVertex(lat,lon) {
+				var x=+Math.sin(Math.PI*lat/nLat);
+				var y=-Math.cos(Math.PI*lat/nLat);
+				var c=Math.cos(2*Math.PI*lon/nLon);
+				var s=Math.sin(2*Math.PI*lon/nLon);
+				pushVertex([0.5*x*c,0.5*y,0.5*x*s,lon/nLon,lat/nLat]);
+			}
+			for (var lat=0;lat<nLat;lat++) {
+				for (var lon=0;lon<nLon;lon++) {
+					if (lat>0) {
+						pushLatLonVertex(lat,lon);
+						pushLatLonVertex(lat,lon+1);
+						pushLatLonVertex(lat+1,lon+1);
+					}
+					if (lat<nLat-1) {
+						pushLatLonVertex(lat,lon);
+						pushLatLonVertex(lat+1,lon+1);
+						pushLatLonVertex(lat+1,lon);
+					}
+				}
+			}
+		}
+		function tetraSphere() {
+			function normalize(v) {
+				var l=Math.sqrt(v[0]*v[0]+v[1]*v[1]+v[2]*v[2]);
+				return [v[0]/l,v[1]/l,v[2]/l];
+			}
+			function mix(a,b,m) {
+				return [
+					a[0]*(1-m)+b[0]*m,
+					a[1]*(1-m)+b[1]*m,
+					a[2]*(1-m)+b[2]*m,
+				];
+			}
+			function pushTetraVertex(v,prevLonAngle) {
+				var lonAngle=Math.atan2(v[2],v[0]);
+				if (prevLonAngle!==undefined) {
+					// texture coords wraparound fix
+					if (prevLonAngle>=Math.PI/2 && lonAngle<0) {
+						lonAngle+=2*Math.PI;
+					}
+					if (prevLonAngle<-Math.PI/2 && lonAngle>0) {
+						lonAngle-=2*Math.PI;
+					}
+				}
+				var latAngle=Math.atan2(Math.sqrt(v[0]*v[0]+v[2]*v[2]),-v[1]);
+				pushVertex([
+					0.5*v[0],0.5*v[1],0.5*v[2],
+					lonAngle/(2*Math.PI),latAngle/Math.PI
+				]);
+				return lonAngle;
+			}
+			function triangle(depth,a,b,c) {
+				a=normalize(a);
+				b=normalize(b);
+				c=normalize(c);
+				if (depth<=0) {
+					var la=pushTetraVertex(a);
+					la=pushTetraVertex(b,la);
+					pushTetraVertex(c,la);
+				} else {
+					var ab=mix(a,b,0.5);
+					var bc=mix(b,c,0.5);
+					var ca=mix(c,a,0.5);
+					triangle(depth-1,a,ab,ca);
+					triangle(depth-1,b,bc,ab);
+					triangle(depth-1,c,ca,bc);
+					triangle(depth-1,ab,bc,ca);
+				}
+			}
+			var a=[+1,+1,+1];
+			var b=[+1,-1,-1];
+			var c=[-1,+1,-1];
+			var d=[-1,-1,+1];
+			triangle(tetraDepth,a,b,c);
+			triangle(tetraDepth,a,d,b);
+			triangle(tetraDepth,a,c,d);
+			triangle(tetraDepth,b,d,c);
+		}
+		latLonSphere();
+		tetraSphere();
+
+		var buffer=gl.createBuffer();
+		gl.bindBuffer(gl.ARRAY_BUFFER,buffer);
+		gl.bufferData(gl.ARRAY_BUFFER,vertices,gl.STATIC_DRAW);
+
+		var positionLoc=gl.getAttribLocation(program,'position');
+		gl.vertexAttribPointer(
+			positionLoc,3,gl.FLOAT,false,
+			Float32Array.BYTES_PER_ELEMENT*5,
+			Float32Array.BYTES_PER_ELEMENT*0
+		);
+		gl.enableVertexAttribArray(positionLoc);
+		var texCoordsLoc=gl.getAttribLocation(program,'texCoords');
+		gl.vertexAttribPointer(
+			texCoordsLoc,2,gl.FLOAT,false,
+			Float32Array.BYTES_PER_ELEMENT*5,
+			Float32Array.BYTES_PER_ELEMENT*3
+		);
+		gl.enableVertexAttribArray(texCoordsLoc);
+
+		var scalingLoc=gl.getUniformLocation(program,'scaling');
+		var rotationLoc=gl.getUniformLocation(program,'rotation');
+		var translationLoc=gl.getUniformLocation(program,'translation');
+
+		function checkerTexture() {
+			var texSize=8;
+			var texImage=new Uint8Array(4*texSize*texSize);
+			for (var i=0;i<texSize;i++) {
+				for (var j=0;j<texSize;j++) {
+					var c=(i^j)&1;
+					texImage[i*texSize*4+j*4+0]=c?255:0;
+					texImage[i*texSize*4+j*4+1]=c?255:0;
+					texImage[i*texSize*4+j*4+2]=c?255:0;
+					texImage[i*texSize*4+j*4+3]=255;
+				}
+			}
+			var texture=gl.createTexture();
+			gl.activeTexture(gl.TEXTURE0);
+			gl.bindTexture(gl.TEXTURE_2D,texture);
+			gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,texSize,texSize,0,gl.RGBA,gl.UNSIGNED_BYTE,texImage);
+			gl.generateMipmap(gl.TEXTURE_2D);
+			gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.NEAREST_MIPMAP_LINEAR);
+			gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.NEAREST);
+		}
+		function earthTexture() {
+			var texture=gl.createTexture();
+			var texImage=new Image();
+			texImage.onload=function() {
+				gl.activeTexture(gl.TEXTURE1);
+				gl.bindTexture(gl.TEXTURE_2D,texture);
+				gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,true);
+				gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,texImage);
+				gl.generateMipmap(gl.TEXTURE_2D);
+				gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR_MIPMAP_NEAREST);
+				gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+				onloadCallback();
+			}
+			texImage.src='earth.jpg';
+		}
+		checkerTexture();
+		earthTexture();
+		var samplerLoc=gl.getUniformLocation(program,'sampler');
+
+		var Sphere=function(type){
+			this.type=type;
+			this.texType=0;
+			this.scaling=new Float32Array([1.0,1.0,1.0]);
+			this.rotation=new Float32Array([0.0,0.0,0.0]);
+			this.translation=new Float32Array([0.0,0.0,0.0]);
+		};
+		Sphere.LATLON=0;
+		Sphere.TETRA=1;
+		Sphere.names=[
+			'latitude-longitude mesh','subdivision of tetrahedron'
+		];
+		Sphere.TEX_CHECKER=0;
+		Sphere.TEX_EARTH=1;
+		Sphere.texNames=[
+			'checkerboard','Earth'
+		];
+		Sphere.prototype.setupTransformations=function(){
+			gl.uniform3fv(scalingLoc,this.scaling);
+			gl.uniform3fv(rotationLoc,this.rotation);
+			gl.uniform3fv(translationLoc,this.translation);
+		}
+		Sphere.prototype.draw=function(){
+			this.setupTransformations();
+			gl.uniform1i(samplerLoc,this.texType);
+			if (this.type==Sphere.LATLON) {
+				gl.drawArrays(gl.TRIANGLES,0,nLatLonVertices);
+			} else {
+				gl.drawArrays(gl.TRIANGLES,nLatLonVertices,nTetraVertices);
+			}
+		}
+		return Sphere;
+	}
+
+	gl.clearColor(0.2,0.2,0.3,1.0);
+	gl.enable(gl.DEPTH_TEST);
+	var program=makeProgram(
+		$('#coursera-geometric-cad-vertex-shader').text(),
+		$('#coursera-geometric-cad-fragment-shader').text()
+	);
+	gl.useProgram(program);
+
+	var Shape=makeSphere(updateCanvas);
+
+	var shapes=[new Shape(Shape.LATLON)];
+	var controls,controlShapes,controlButtons;
+	function updateCanvas() {
+		gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+		shapes.forEach(function(shape){
+			shape.draw();
+		});
+	}
+	function updateControlShapes() {
+		controlShapes.empty().append(shapes.map(function(shape,shapeIndex){
+			return $("<div class='shape'>").append(
+				$("<select>").append(Shape.names.map(function(shapeName,shapeType){
+					return "<option value='"+shapeType+"'"+(shapeType==shape.type?" selected":"")+">"+shapeName+"</option>";
+				})).change(function(){
+					shape.type=parseInt(this.value);
+					updateCanvas();
+				})
+			).append(
+				" "
+			).append(
+				$("<select>").append(Shape.texNames.map(function(shapeTexName,shapeTexType){
+					return "<option value='"+shapeTexType+"'"+(shapeTexType==shape.texType?" selected":"")+">"+shapeTexName+"</option>";
+				})).change(function(){
+					shape.texType=parseInt(this.value);
+					updateCanvas();
+				})
+			).append(
+				[
+					{name:'scale',     prop:shape.scaling,     step:'0.01',  digits:2},
+					{name:'rotate',    prop:shape.rotation,    step:'1',     digits:0},
+					{name:'translate', prop:shape.translation, step:'0.005', digits:3},
+				].map(function(transform){
+					return $("<span class='transform'> </span>").append(['x','y','z'].map(function(dirName,dirIndex){
+						return $("<label><span class='transform-name'>"+transform.name+"</span> "+dirName+" </label>").append(
+							$("<input type='number' step='"+transform.step+"' value='"+transform.prop[dirIndex].toFixed(transform.digits)+"'>").on('input',function(){
+								transform.prop[dirIndex]=parseFloat(this.value);
+								updateCanvas();
+							})
+						);
+					}))
+				})
+			).append(
+				" "
+			).append(
+				$("<button type='button'>Delete</button>").click(function(){
+					shapes.splice(shapeIndex,1);
+					updateCanvas();
+					updateControlShapes();
+				})
+			);
+		}));
+	}
+
+	container.append(
+		controls=$("<div class='controls'>").append(
+			controlShapes=$("<div class='shapes'>")
+		).append(
+			controlButtons=$("<div class='buttons'>").append(Shape.names.map(function(shapeName,shapeType){
+				return $("<button type='button'>Add spere constructed using "+shapeName+"</button>").click(function(){
+					shapes.push(new Shape(shapeType));
+					updateCanvas();
+					updateControlShapes();
+				});
+			}))
+		)
+	);
+	updateCanvas();
+	updateControlShapes();
+});
+</script>
+</head>
+<body>
+<div id='coursera-geometric-cad'>javascript disabled</div>
+</body>
+</html>
