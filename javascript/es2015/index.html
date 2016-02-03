@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+<meta charset='utf-8' />
+<title>ES2015 features that are 'safe' to use</title>
+</head>
+<body>
+<h1>Which ECMAScript 2015 features are safe to use?</h1>
+<h2>Target systems</h2>
+<ul>
+<li>Desktop web browsers: latest Firefox, Chrome, IE11+. <a href='https://babeljs.io/'>Babel</a> transpiling aloowed if generated code is not too bloated.</li>
+<li>Latest <a href='https://nodejs.org/'>Node.js.</a></li>
+</ul>
+<h2>General approach with Babel</h2>
+<ul>
+<li>Use <a href='https://github.com/babel/babelify'>babelify</a></li>
+<li>Use external helpers</li>
+<li>Provide helpers for class-related things</li>
+<li>Modify static method copying to keep original prototypes</li>
+<li>Use loose mode (don't know yet how to make external helpers for normal mode, may have conflicts with prototype nonmodification fixes)</li>
+</ul>
+<h2>ES2015 features requiring some Babel helpers, safe to use</h2>
+<ul>
+<li>Classes including static methods</li>
+</ul>
+<h2>ES2015 features requiring no Babel helpers, safe to use</h2>
+<ul>
+<li><code>const</code>, <code>let</code> (also supported natively by browsers, may want to disable Babel on these)</li>
+<li>template strings</li>
+<li>arrow functions</li>
+<li>object literal extensions</li>
+<li>spread operator on arrays</li>
+<li><code>Map</code> with empty constructor and its methods: <code>get()</code>, <code>set()</code> (supported natively by browsers)</li>
+</ul>
+<h2>ES2015 features requiring Babel helpers and/or other polyfills, unsafe to use</h2>
+<ul>
+<li><code>for .. of</code> (requires <code>Symbol</code> polyfill)</li>
+<li><code>String</code> methods like <code>startsWith()</code> (may have to use core.js)</li>
+<li>default arguments</li>
+</ul>
+<h2>Useful links</h2>
+<ul>
+<li><a href='https://babeljs.io/'>Brief list of ES2015 features supported by Babel</a></li>
+<li><a href='https://nodejs.org/en/docs/es6/'>ECMAScript 2015 in Node.js</a></li>
+<li><a href='https://kangax.github.io/compat-table/es6/'>ECMAScript 6 compatibility table</a></li>
+<li><a href='https://github.com/addyosmani/es6-tools/blob/master/README.md'>ECMAScript 6 Tools</a></li>
+</ul>
+</body>
+</html>
