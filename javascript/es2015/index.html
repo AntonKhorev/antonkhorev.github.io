@@ -21,29 +21,30 @@
 </ul>
 <h2>ES2015 features requiring some Babel helpers, safe to use</h2>
 <ul>
-<li>Classes including static methods</li>
+<li>classes including static methods</li>
+<li>template strings with tags</li>
 </ul>
 <h2>ES2015 features requiring no Babel helpers, safe to use</h2>
 <ul>
 <li><code>const</code>, <code>let</code> (also supported natively by browsers, may want to disable Babel on these)</li>
-<li>template strings</li>
+<li>template strings without tags</li>
 <li>arrow functions</li>
 <li>object literal extensions</li>
 <li>spread operator on arrays</li>
 <li><code>Map</code> with empty constructor and its methods: <code>get()</code>, <code>set()</code>, <code>forEach()</code> (supported natively by browsers)</li>
 <li>octal and binary number literals (not as Number() arg)</li>
 <li>block-scoped functions (not supported by Firefox, but supported by IE 11)</li>
+<li>destructuring (of arrays)</li>
+<li>default arguments</li>
 </ul>
 <h2>ES2015 features requiring Babel helpers and/or other polyfills, unsafe to use</h2>
 <ul>
 <li><code>for .. of</code> (requires <code>Symbol</code> polyfill)</li>
 <li><code>String</code> methods like <code>startsWith()</code> (may have to use core.js)</li>
 <li>object super (for object literals with __proto__; requires just one helper fn, but not useful to me)</li>
-<li>default arguments</li>
 </ul>
 <h2>ES2015 features not implemented in Node.js, unsafe to use</h2>
 <ul>
-<li>destructuring</li>
 <li>regexp <code>/u</code> flag (generates weird expression in place of <code>.</code>)</li>
 <li>regexp <code>/y</code> flag</li>
 </ul>
